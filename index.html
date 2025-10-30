@@ -122,9 +122,15 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
-        .loading {
+        .file-controls {
+            margin-bottom: 20px;
             text-align: center;
-            padding: 20px;
+        }
+        .file-controls button {
+            margin: 0 10px;
+        }
+        #fileInput {
+            display: none;
         }
     </style>
 </head>
@@ -132,6 +138,12 @@
     <h1>配方管理系统</h1>
     
     <div id="notification" class="notification"></div>
+    
+    <div class="file-controls">
+        <input type="file" id="fileInput" accept=".json">
+        <button onclick="document.getElementById('fileInput').click()">导入JSON文件</button>
+        <button onclick="exportToJson()">导出JSON文件</button>
+    </div>
     
     <div class="form-container">
         <h2>添加/编辑配方</h2>
@@ -158,7 +170,6 @@
             </div>
             <button type="submit">保存配方</button>
             <button type="button" id="cancelBtn">取消</button>
-            <button type="button" id="refreshBtn">刷新数据</button>
         </form>
     </div>
     
@@ -181,7 +192,7 @@
             </thead>
             <tbody id="recipeTableBody">
                 <tr>
-                    <td colspan="7" class="loading">正在加载数据...</td>
+                    <td colspan="7">请导入JSON文件以开始使用</td>
                 </tr>
             </tbody>
         </table>
@@ -192,12 +203,8 @@
         let recipes = [];
         let editingId = null;
 
-        // API基础URL
-        const API_BASE = '/api/recipes';
-
         // 初始化页面
         document.addEventListener('DOMContentLoaded', function() {
-            loadRecipes();
             setupEventListeners();
         });
 
@@ -219,9 +226,9 @@
                 searchRecipes(e.target.value);
             });
 
-            // 刷新数据按钮
-            document.getElementById('refreshBtn').addEventListener('click', function() {
-                loadRecipes();
+            // 文件导入
+            document.getElementById('fileInput').addEventListener('change', function(e) {
+                importFromJson(e.target.files[0]);
             });
         }
 
@@ -237,20 +244,50 @@
             }, 3000);
         }
 
-        // 加载配方数据
-        function loadRecipes() {
-            fetch(API_BASE)
-                .then(response => response.json())
-                .then(data => {
+        // 导入JSON文件
+        function importFromJson(file) {
+            if (!file) {
+                showNotification('请选择一个文件', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
                     recipes = data;
                     renderRecipes(recipes);
-                    showNotification('数据加载成功', 'success');
-                })
-                .catch(error => {
-                    console.error('加载数据时出错:', error);
-                    showNotification('加载数据时出错: ' + error.message, 'error');
-                    document.getElementById('recipeTableBody').innerHTML = '<tr><td colspan="7">加载数据失败</td></tr>';
-                });
+                    showNotification('数据导入成功', 'success');
+                } catch (error) {
+                    console.error('解析JSON时出错:', error);
+                    showNotification('解析JSON文件时出错: ' + error.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 导出JSON文件
+        function exportToJson() {
+            if (recipes.length === 0) {
+                showNotification('没有数据可导出', 'error');
+                return;
+            }
+
+            const dataStr = JSON.stringify(recipes, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const url = URL.createObjectURL(dataBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'recipes.json';
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showNotification('数据导出成功', 'success');
+            }, 100);
         }
 
         // 保存配方
@@ -261,62 +298,47 @@
             const color = document.getElementById('color').value;
             const composition = document.getElementById('composition').value;
             
-            const recipeData = {
-                id,
-                name,
-                weight,
-                color,
-                composition
-            };
+            const now = new Date();
+            const time = now.toLocaleString('zh-CN');
             
             if (editingId !== null) {
                 // 更新现有配方
-                fetch(`${API_BASE}/${editingId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(recipeData)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        showNotification('更新配方失败: ' + data.error, 'error');
-                    } else {
-                        showNotification('配方更新成功', 'success');
-                        loadRecipes();
-                        cancelEdit();
-                    }
-                })
-                .catch(error => {
-                    console.error('更新配方时出错:', error);
-                    showNotification('更新配方时出错: ' + error.message, 'error');
-                });
+                const index = recipes.findIndex(recipe => recipe.id === editingId);
+                if (index !== -1) {
+                    recipes[index] = {
+                        ...recipes[index],
+                        name,
+                        weight,
+                        color,
+                        composition,
+                        time
+                    };
+                }
+                editingId = null;
             } else {
+                // 检查编号是否已存在
+                if (recipes.some(recipe => recipe.id === id)) {
+                    showNotification('编号已存在，请使用不同的编号', 'error');
+                    return;
+                }
+                
                 // 添加新配方
-                fetch(API_BASE, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(recipeData)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        showNotification('添加配方失败: ' + data.error, 'error');
-                    } else {
-                        showNotification('配方添加成功', 'success');
-                        loadRecipes();
-                        document.getElementById('recipeForm').reset();
-                        document.getElementById('color').value = '#00b5fc';
-                    }
-                })
-                .catch(error => {
-                    console.error('添加配方时出错:', error);
-                    showNotification('添加配方时出错: ' + error.message, 'error');
+                recipes.push({
+                    id,
+                    name,
+                    weight,
+                    color,
+                    composition,
+                    time
                 });
             }
+            
+            // 清空表单
+            document.getElementById('recipeForm').reset();
+            document.getElementById('color').value = '#00b5fc';
+            
+            // 重新渲染表格
+            renderRecipes(recipes);
         }
 
         // 渲染配方表格
@@ -358,7 +380,7 @@
                 }
                 
                 row.innerHTML = `
-                    <td>${recipe.time || 'N/A'}</td>
+                    <td>${recipe.time || new Date().toLocaleString('zh-CN')}</td>
                     <td>${recipe.id}</td>
                     <td>${recipe.name}</td>
                     <td>${recipe.weight}</td>
@@ -398,22 +420,9 @@
         // 删除配方
         function deleteRecipe(id) {
             if (confirm('确定要删除这个配方吗？')) {
-                fetch(`${API_BASE}/${id}`, {
-                    method: 'DELETE'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        showNotification('删除配方失败: ' + data.error, 'error');
-                    } else {
-                        showNotification('配方删除成功', 'success');
-                        loadRecipes();
-                    }
-                })
-                .catch(error => {
-                    console.error('删除配方时出错:', error);
-                    showNotification('删除配方时出错: ' + error.message, 'error');
-                });
+                recipes = recipes.filter(recipe => recipe.id !== id);
+                renderRecipes(recipes);
+                showNotification('配方删除成功', 'success');
             }
         }
 
