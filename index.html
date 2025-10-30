@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配方管理系统</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .form-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .recipe-table {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .color-box {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .percentage-bar {
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .percentage-fill {
+            height: 100%;
+            background-color: #007bff;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        .edit-btn {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .edit-btn:hover {
+            background-color: #e0a800;
+        }
+        .delete-btn {
+            background-color: #dc3545;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+        .search-container {
+            margin-bottom: 20px;
+        }
+        .notification {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>配方管理系统</h1>
+    
+    <div id="notification" class="notification"></div>
+    
+    <div class="form-container">
+        <h2>添加/编辑配方</h2>
+        <form id="recipeForm">
+            <div class="form-group">
+                <label for="id">编号:</label>
+                <input type="text" id="id" required>
+            </div>
+            <div class="form-group">
+                <label for="name">名称:</label>
+                <input type="text" id="name" required>
+            </div>
+            <div class="form-group">
+                <label for="weight">重量:</label>
+                <input type="number" id="weight" min="0" step="0.1" required>
+            </div>
+            <div class="form-group">
+                <label for="color">颜色:</label>
+                <input type="color" id="color" value="#00b5fc">
+            </div>
+            <div class="form-group">
+                <label for="composition">配色组成 (格式: 颜色代码:占比, 例如: #ff0000:30, #00ff00:70):</label>
+                <input type="text" id="composition" placeholder="#ff0000:30, #00ff00:70">
+            </div>
+            <button type="submit">保存配方</button>
+            <button type="button" id="cancelBtn">取消</button>
+            <button type="button" id="refreshBtn">刷新数据</button>
+        </form>
+    </div>
+    
+    <div class="search-container">
+        <input type="text" id="searchInput" placeholder="搜索配方编号或名称...">
+    </div>
+    
+    <div class="recipe-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>编号</th>
+                    <th>名称</th>
+                    <th>重量</th>
+                    <th>主颜色</th>
+                    <th>配色组成</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="recipeTableBody">
+                <tr>
+                    <td colspan="7" class="loading">正在加载数据...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 配方数据存储在内存中
+        let recipes = [];
+        let editingId = null;
+
+        // API基础URL
+        const API_BASE = '/api/recipes';
+
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRecipes();
+            setupEventListeners();
+        });
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 表单提交事件
+            document.getElementById('recipeForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveRecipe();
+            });
+
+            // 取消编辑按钮
+            document.getElementById('cancelBtn').addEventListener('click', function() {
+                cancelEdit();
+            });
+
+            // 搜索功能
+            document.getElementById('searchInput').addEventListener('input', function(e) {
+                searchRecipes(e.target.value);
+            });
+
+            // 刷新数据按钮
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                loadRecipes();
+            });
+        }
+
+        // 显示通知
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = 'notification ' + type;
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 3000);
+        }
+
+        // 加载配方数据
+        function loadRecipes() {
+            fetch(API_BASE)
+                .then(response => response.json())
+                .then(data => {
+                    recipes = data;
+                    renderRecipes(recipes);
+                    showNotification('数据加载成功', 'success');
+                })
+                .catch(error => {
+                    console.error('加载数据时出错:', error);
+                    showNotification('加载数据时出错: ' + error.message, 'error');
+                    document.getElementById('recipeTableBody').innerHTML = '<tr><td colspan="7">加载数据失败</td></tr>';
+                });
+        }
+
+        // 保存配方
+        function saveRecipe() {
+            const id = document.getElementById('id').value;
+            const name = document.getElementById('name').value;
+            const weight = parseFloat(document.getElementById('weight').value);
+            const color = document.getElementById('color').value;
+            const composition = document.getElementById('composition').value;
+            
+            const recipeData = {
+                id,
+                name,
+                weight,
+                color,
+                composition
+            };
+            
+            if (editingId !== null) {
+                // 更新现有配方
+                fetch(`${API_BASE}/${editingId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(recipeData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showNotification('更新配方失败: ' + data.error, 'error');
+                    } else {
+                        showNotification('配方更新成功', 'success');
+                        loadRecipes();
+                        cancelEdit();
+                    }
+                })
+                .catch(error => {
+                    console.error('更新配方时出错:', error);
+                    showNotification('更新配方时出错: ' + error.message, 'error');
+                });
+            } else {
+                // 添加新配方
+                fetch(API_BASE, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(recipeData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showNotification('添加配方失败: ' + data.error, 'error');
+                    } else {
+                        showNotification('配方添加成功', 'success');
+                        loadRecipes();
+                        document.getElementById('recipeForm').reset();
+                        document.getElementById('color').value = '#00b5fc';
+                    }
+                })
+                .catch(error => {
+                    console.error('添加配方时出错:', error);
+                    showNotification('添加配方时出错: ' + error.message, 'error');
+                });
+            }
+        }
+
+        // 渲染配方表格
+        function renderRecipes(recipeList) {
+            const tbody = document.getElementById('recipeTableBody');
+            tbody.innerHTML = '';
+            
+            if (recipeList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7">暂无配方数据</td></tr>';
+                return;
+            }
+            
+            recipeList.forEach(recipe => {
+                const row = document.createElement('tr');
+                
+                // 解析配色组成
+                let compositionHTML = '';
+                if (recipe.composition) {
+                    const parts = recipe.composition.split(',').map(part => part.trim());
+                    compositionHTML = '<div>';
+                    parts.forEach(part => {
+                        const [colorCode, percentage] = part.split(':');
+                        if (colorCode && percentage) {
+                            compositionHTML += `
+                                <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                                    <div class="color-box" style="background-color: ${colorCode};"></div>
+                                    <span style="margin: 0 10px;">${colorCode}</span>
+                                    <div style="flex-grow: 1;">
+                                        <div class="percentage-bar">
+                                            <div class="percentage-fill" style="width: ${percentage}%; background-color: ${colorCode};"></div>
+                                        </div>
+                                    </div>
+                                    <span>${percentage}%</span>
+                                </div>
+                            `;
+                        }
+                    });
+                    compositionHTML += '</div>';
+                }
+                
+                row.innerHTML = `
+                    <td>${recipe.time || 'N/A'}</td>
+                    <td>${recipe.id}</td>
+                    <td>${recipe.name}</td>
+                    <td>${recipe.weight}</td>
+                    <td>
+                        <div class="color-box" style="background-color: ${recipe.color};"></div>
+                        <div>${recipe.color}</div>
+                    </td>
+                    <td>${compositionHTML || '无'}</td>
+                    <td class="actions">
+                        <button class="edit-btn" onclick="editRecipe('${recipe.id}')">编辑</button>
+                        <button class="delete-btn" onclick="deleteRecipe('${recipe.id}')">删除</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // 编辑配方
+        function editRecipe(id) {
+            const recipe = recipes.find(recipe => recipe.id === id);
+            if (recipe) {
+                document.getElementById('id').value = recipe.id;
+                document.getElementById('name').value = recipe.name;
+                document.getElementById('weight').value = recipe.weight;
+                document.getElementById('color').value = recipe.color;
+                document.getElementById('composition').value = recipe.composition || '';
+                
+                // 设置为编辑模式
+                editingId = id;
+                
+                // 滚动到表单顶部
+                document.querySelector('.form-container').scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // 删除配方
+        function deleteRecipe(id) {
+            if (confirm('确定要删除这个配方吗？')) {
+                fetch(`${API_BASE}/${id}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showNotification('删除配方失败: ' + data.error, 'error');
+                    } else {
+                        showNotification('配方删除成功', 'success');
+                        loadRecipes();
+                    }
+                })
+                .catch(error => {
+                    console.error('删除配方时出错:', error);
+                    showNotification('删除配方时出错: ' + error.message, 'error');
+                });
+            }
+        }
+
+        // 取消编辑
+        function cancelEdit() {
+            document.getElementById('recipeForm').reset();
+            document.getElementById('color').value = '#00b5fc';
+            editingId = null;
+        }
+
+        // 搜索配方
+        function searchRecipes(keyword) {
+            if (!keyword) {
+                renderRecipes(recipes);
+                return;
+            }
+            
+            const filtered = recipes.filter(recipe => 
+                recipe.id.toLowerCase().includes(keyword.toLowerCase()) ||
+                recipe.name.toLowerCase().includes(keyword.toLowerCase())
+            );
+            
+            renderRecipes(filtered);
+        }
+    </script>
+</body>
+</html>

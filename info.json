@@ -1,0 +1,26 @@
+[
+  {
+    "id": "001",
+    "name": "蓝色配方",
+    "weight": 100.5,
+    "color": "#00b5fc",
+    "composition": "#00b5fc:60, #ffffff:40",
+    "time": "2025-10-30 10:30:00"
+  },
+  {
+    "id": "002",
+    "name": "绿色配方",
+    "weight": 85.2,
+    "color": "#4caf50",
+    "composition": "#4caf50:70, #ffffff:30",
+    "time": "2025-10-30 11:15:00"
+  },
+  {
+    "id": "003",
+    "name": "红色配方",
+    "weight": 120.0,
+    "color": "#f44336",
+    "composition": "#f44336:50, #ffff00:30, #ffffff:20",
+    "time": "2025-10-30 12:00:00"
+  }
+]
